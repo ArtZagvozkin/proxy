@@ -1,0 +1,9 @@
+services:
+ 3proxysvc:
+  image: 3proxy/3proxy:latest
+  container_name: 3proxy-node
+  volumes:
+   - ./conf:/usr/local/3proxy/conf
+  ports:
+   - 33129:57002
+  restart: unless-stopped
