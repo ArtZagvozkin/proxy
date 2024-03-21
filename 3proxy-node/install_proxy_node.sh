@@ -25,14 +25,17 @@ if [ -z $proxy_port ]; then
     proxy_port=$default_proxy_port
 fi
 
+proxy_crypt=$(echo -n "$proxy_passw" | openssl passwd -1 -salt 'UNTr5FoO' -stdin)
+
 
 #Install basic packages
 apt update -y
-apt upgrade -y
-apt install -y mc build-essential wget tar
+apt install -y mc build-essential wget tar iptables-persistent
 
 
 #Install 3proxy
+mkdir -p /opt/3proxy
+cd /opt/3proxy
 wget https://github.com/z3APA3A/3proxy/archive/0.9.4.tar.gz
 tar -xvzf 0.9.4.tar.gz
 cd 3proxy-0.9.4/
@@ -51,7 +54,7 @@ chmod 600 /etc/3proxy/3proxy.cfg
 
 
 #Configuring 3proxy
-echo 'users' $proxy_login':CL:'$proxy_passw > /etc/3proxy/3proxy.cfg
+echo 'users "'$proxy_login':CR:'$proxy_crypt'"' > /etc/3proxy/3proxy.cfg
 echo 'daemon' >> /etc/3proxy/3proxy.cfg
 echo 'rotate 30' >> /etc/3proxy/3proxy.cfg
 echo 'setgid' $proxy_user_id >> /etc/3proxy/3proxy.cfg
@@ -71,11 +74,20 @@ echo '' >> /etc/3proxy/3proxy.cfg
 iptables -F
 iptables -P INPUT DROP
 iptables -P FORWARD DROP
-iptables -P OUTPUT DROP
+iptables -P OUTPUT ACCEPT
+
+iptables -A INPUT -i lo -j ACCEPT
+iptables -A OUTPUT -o lo -j ACCEPT
+iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
 iptables -A INPUT -p tcp --dport 22 -j ACCEPT
-iptables -A OUTPUT -p tcp --sport 22 -j ACCEPT
+iptables -A INPUT -p tcp --dport 80 -j ACCEPT
+iptables -A INPUT -p tcp --dport 443 -j ACCEPT
 iptables -A INPUT -p tcp --dport $proxy_port -j ACCEPT
-iptables -A OUTPUT -p tcp --sport $proxy_port -j ACCEPT
+
+iptables-save > /etc/iptables/rules.v4
+systemctl enable netfilter-persistent
+systemctl restart netfilter-persistent
 
 
 #Create 3proxy.service
