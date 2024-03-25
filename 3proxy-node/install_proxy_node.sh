@@ -1,17 +1,38 @@
 #!/bin/bash
 
+default_new_hostname=$(hostname)
+default_zabbix_server='158.160.145.125'
+default_zabbix_port='10050'
 default_proxy_login=user0001
 default_proxy_passw=user0001
 default_proxy_port='33128'
 
 
-#Get proxy_login, proxy_passw, proxy_port
+#Get new_hostname, zabbix_server, zabbix port_proxy_login, proxy_passw, proxy_port
+echo -n "Hostaname [$default_new_hostname]: "
+read new_hostname
+echo -n "Zabbix server [$default_zabbix_server]: "
+read zabbix_server
+echo -n "Zabbix port [$default_zabbix_port]: "
+read zabbix_port
 echo -n "Proxy login [$default_proxy_login]: "
 read proxy_login
 echo -n "Proxy password [$default_proxy_passw]: "
 read proxy_passw
 echo -n "Proxy port [$default_proxy_port]: "
 read proxy_port
+
+if [ -z $new_hostname ]; then
+    new_hostname=$default_new_hostname
+fi
+
+if [ -z $zabbix_server ]; then
+    zabbix_server=$default_zabbix_server
+fi
+
+if [ -z $zabbix_port ]; then
+    zabbix_port=$default_zabbix_port
+fi
 
 if [ -z $proxy_login ]; then
     proxy_login=$default_proxy_login
@@ -28,9 +49,41 @@ fi
 proxy_crypt=$(echo -n "$proxy_passw" | openssl passwd -1 -salt 'UNTr5FoO' -stdin)
 
 
+#Change hostname
+hostname $new_hostname
+echo $new_hostname > /etc/hostname
+echo '' >> /etc/hostname
+echo '' >> /etc/hosts
+echo '127.0.0.1 '$new_hostname >> /etc/hosts
+echo '' >> /etc/hosts
+
+
 #Install basic packages
 apt update -y
-apt install -y mc build-essential wget tar iptables-persistent
+apt install -y mc build-essential wget tar iptables-persistent netcat tcpdump
+
+
+#Install zabbix agent
+mkdir -p /opt/zabbix_agent
+cd /opt/zabbix_agent
+wget https://repo.zabbix.com/zabbix/5.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_5.0-2+ubuntu22.04_all.deb
+dpkg -i zabbix-release_5.0-2+ubuntu22.04_all.deb
+apt update
+apt install -y zabbix-agent
+#Configuring zabbix agent
+echo 'PidFile=/run/zabbix/zabbix_agentd.pid' > /etc/zabbix/zabbix_agentd.conf
+echo 'LogFile=/var/log/zabbix/zabbix_agentd.log' >> /etc/zabbix/zabbix_agentd.conf
+echo 'LogFileSize=0' >> /etc/zabbix/zabbix_agentd.conf
+echo 'Include=/etc/zabbix/zabbix_agentd.d/*.conf' >> /etc/zabbix/zabbix_agentd.conf
+echo 'EnableRemoteCommands=0' >> /etc/zabbix/zabbix_agentd.conf
+echo 'Server='$zabbix_server >> /etc/zabbix/zabbix_agentd.conf
+echo 'ServerActive='$zabbix_server >> /etc/zabbix/zabbix_agentd.conf
+echo 'ListenPort='$zabbix_port >> /etc/zabbix/zabbix_agentd.conf
+echo 'Hostname='$new_hostname >> /etc/zabbix/zabbix_agentd.conf
+echo '' >> /etc/zabbix/zabbix_agentd.conf
+#Start zabbix agent
+systemctl restart zabbix-agent
+systemctl enable zabbix-agent
 
 
 #Install 3proxy
@@ -51,8 +104,6 @@ chown -R proxyuser:proxyuser /var/log/3proxy
 chown -R proxyuser:proxyuser /usr/bin/3proxy
 touch /etc/3proxy/3proxy.cfg
 chmod 600 /etc/3proxy/3proxy.cfg
-
-
 #Configuring 3proxy
 echo 'users "'$proxy_login':CR:'$proxy_crypt'"' > /etc/3proxy/3proxy.cfg
 echo 'daemon' >> /etc/3proxy/3proxy.cfg
@@ -83,6 +134,7 @@ iptables -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 iptables -A INPUT -p tcp --dport 22 -j ACCEPT
 iptables -A INPUT -p tcp --dport 80 -j ACCEPT
 iptables -A INPUT -p tcp --dport 443 -j ACCEPT
+iptables -A INPUT -p tcp --dport $zabbix_port -j ACCEPT
 iptables -A INPUT -p tcp --dport $proxy_port -j ACCEPT
 
 iptables-save > /etc/iptables/rules.v4
@@ -117,6 +169,8 @@ echo ''
 echo ''
 echo '--------------------------------------------------------------------------------'
 echo 'Installation is complete'
+echo "Hostaname: $new_hostname"
+echo "Zabbix server: $zabbix_server"
+echo "Zabbix port: $zabbix_port"
 echo "Proxy port: $proxy_port"
 echo ""
-

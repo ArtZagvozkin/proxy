@@ -1,0 +1,43 @@
+version: '3.5'
+
+services:
+  zabbix-server:
+    image: zabbix/zabbix-server-pgsql:latest
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ZBX_HOSTNAME: ${ZBX_HOSTNAME}
+      ZBX_JAVAGATEWAY_ENABLE: ${ZBX_JAVAGATEWAY_ENABLE}
+    ports:
+      - "10051:10051"
+    depends_on:
+      - postgres
+
+  postgres:
+    image: postgres:latest
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  zabbix-web-nginx-pgsql:
+    image: zabbix/zabbix-web-nginx-pgsql:latest
+    environment:
+      DB_SERVER_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ZBX_SERVER_HOST: zabbix-server
+      PHP_TZ: Europe/Moscow
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - zabbix-server
+
+volumes:
+  postgres_data:
